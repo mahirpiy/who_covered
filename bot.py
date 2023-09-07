@@ -16,7 +16,6 @@ SPORT_TO_EMOJI = {
 
 
 def run_bot(sport: str):
-    print(sport)
     """
     Runs the bot
     Gets and cleans the data
