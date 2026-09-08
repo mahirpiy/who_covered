@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 
 import espn
 import store
-from tweet import preflight, send_tweet
+from tweet import PostingBlocked, preflight, send_tweet
 from grading import COVER, NO_COVER, PUSH, evaluate, hashtag
 
 LOG = logging.getLogger('chalk_report')
@@ -258,6 +258,14 @@ def _process_event(connection, league, raw_event, options, first_of_pass):
 
     try:
         send_tweet(text, dry_run=options.dry_run)
+    except PostingBlocked as error:
+        # Applies to every remaining game, so stop the run instead of
+        # collecting the same refusal dozens more times.
+        LOG.error('%s', error)
+        LOG.error('stopping after %s post(s) this run; nothing is lost, a '
+                  'later run resumes from here', options.posted)
+        options.shutdown.requested = True
+        return 0
     except Exception:  # noqa: BLE001 - never lose the loop over one send
         LOG.exception('send failed for %s, will retry next pass',
                       event['short_name'])

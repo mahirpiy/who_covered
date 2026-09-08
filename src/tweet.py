@@ -16,6 +16,17 @@ LOG = logging.getLogger(__name__)
 
 MAX_TWEET_LENGTH = 280
 
+
+class PostingBlocked(RuntimeError):
+    """X refused the write for a reason that will not fix itself.
+
+    Raised for 403 (account restricted, duplicate content, read-only token)
+    and 429 (rate limited). These apply to every subsequent post in the run,
+    so the caller must stop rather than working through the rest of the slate
+    collecting identical refusals -- repeated rejected writes against a
+    restricted account prolong the restriction.
+    """
+
 CREDENTIAL_NAMES = (
     'TWITTER_ACCESS_TOKEN',
     'TWITTER_ACCESS_TOKEN_SECRET',
@@ -92,7 +103,18 @@ def send_tweet(text, dry_run=True):
         consumer_secret=creds['TWITTER_CONSUMER_SECRET'],
     )
 
-    client.create_tweet(text=text)
+    try:
+        client.create_tweet(text=text)
+    except tweepy.Forbidden as error:
+        raise PostingBlocked(
+            f'X refused the post (403): {error}. The account or app is not '
+            'permitted to post right now -- check x.com for a restriction '
+            'notice before retrying.') from error
+    except tweepy.TooManyRequests as error:
+        raise PostingBlocked(
+            f'X rate limited the post (429): {error}. Wait for the window to '
+            'reset before retrying.') from error
+
     LOG.info('posted tweet (%s chars)', len(text))
 
     return True

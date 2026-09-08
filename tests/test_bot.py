@@ -305,3 +305,60 @@ def test_live_without_dates_still_refuses_on_empty_database(tmp_path,
 
     assert code == 1
     assert sent == []
+
+
+def test_a_403_stops_the_run_instead_of_retrying_every_game(connection,
+                                                            stub_espn,
+                                                            monkeypatch):
+    """One account-level refusal applies to every game, so stop immediately."""
+
+    import tweet
+
+    attempts = {'n': 0}
+
+    def blocked(text, dry_run):
+        attempts['n'] += 1
+        raise tweet.PostingBlocked('403: account not permitted')
+
+    monkeypatch.setattr(bot, 'send_tweet', blocked)
+
+    opts = options()
+    handled = bot.process_date(connection, 'cfb', '20260905', opts)
+
+    assert attempts['n'] == 1        # not once per game
+    assert handled == 0
+    assert opts.shutdown.requested   # run aborted
+    assert store.is_empty(connection)
+
+
+def test_forbidden_becomes_posting_blocked(monkeypatch):
+    """tweepy's 403 must surface as the stop-the-run error, with its detail."""
+
+    import tweepy
+
+    import tweet
+
+    monkeypatch.setenv('TWITTER_ACCESS_TOKEN', 'x')
+    monkeypatch.setenv('TWITTER_ACCESS_TOKEN_SECRET', 'x')
+    monkeypatch.setenv('TWITTER_CONSUMER_KEY', 'x')
+    monkeypatch.setenv('TWITTER_CONSUMER_SECRET', 'x')
+
+    class FakeResponse:
+        status_code = 403
+        reason = 'Forbidden'
+        headers = {}
+
+        def json(self):
+            return {'detail': 'Your account is not permitted to access '
+                              'this feature.'}
+
+    def explode(self, text=None, **kwargs):
+        raise tweepy.Forbidden(FakeResponse())
+
+    monkeypatch.setattr(tweepy.Client, 'create_tweet', explode)
+
+    with pytest.raises(tweet.PostingBlocked) as raised:
+        tweet.send_tweet('hello', dry_run=False)
+
+    assert '403' in str(raised.value)
+    assert 'not permitted' in str(raised.value)
