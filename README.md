@@ -104,37 +104,87 @@ Railway crons are UTC-only, cannot fire more often than every 5 minutes, and
 volume support on them is undocumented -- a plain service gets 2-minute
 polling and a volume that is definitely supported.
 
-[railway.json](railway.json) sets the builder, start command, and an
-`ON_FAILURE` restart policy.
+### How the start command works
+
+[railway.json](railway.json) sets the start command to:
+
+```
+sh -c "python src/bot.py $BOT_ARGS"
+```
+
+Everything the bot does is driven by the **`BOT_ARGS` service variable**. This
+matters because Railway's config file *overrides* dashboard settings -- a
+`startCommand` hardcoded in `railway.json` could not be changed from the UI.
+Variables are not overridden, so changing `BOT_ARGS` and redeploying is how
+you move between phases.
+
+`BOT_ARGS` defaults to print-only in the Dockerfile. Nothing posts until you
+put `--live` in it.
+
+### Setup
 
 1. **Create the service** from this repo. Railway reads `railway.json` and
    builds the Dockerfile.
 
-2. **Add a volume** mounted at `/data`. The image already points
-   `CHALK_REPORT_DB` at `/data/chalk_report.db`. Without the volume the database
-   resets on every deploy and the bot re-posts games.
+2. **Add a volume** (⌘K -> "New Volume", attach to the service) with mount
+   path `/data`. The image points `CHALK_REPORT_DB` at
+   `/data/chalk_report.db`. Without the volume the database resets on every
+   deploy and the bot re-posts games.
 
-3. **Set the four Twitter variables** in the service:
-   `TWITTER_ACCESS_TOKEN`, `TWITTER_ACCESS_TOKEN_SECRET`,
-   `TWITTER_CONSUMER_KEY`, `TWITTER_CONSUMER_SECRET`.
+3. **Set variables** on the service:
 
-4. **Deploy.** The start command includes `--seed-on-empty`, so the first pass
-   against a blank volume records every already-final game *without* tweeting,
-   then posts normally from the next pass. This is what stops a fresh deploy
-   from dumping an entire Saturday onto the timeline.
+   | Variable | Value |
+   |---|---|
+   | `TWITTER_CONSUMER_KEY` | from the developer portal |
+   | `TWITTER_CONSUMER_SECRET` | from the developer portal |
+   | `TWITTER_ACCESS_TOKEN` | from `scripts/authorize.py` |
+   | `TWITTER_ACCESS_TOKEN_SECRET` | from `scripts/authorize.py` |
+   | `BOT_ARGS` | see phases below |
 
-Railway constraints worth knowing: a service with a volume cannot run
-replicas, and Railway blocks two deployments mounting the same volume at once
--- which is exactly the guarantee this bot needs, since two instances would
-double-post.
+### Rollout phases
 
-`--pace 20` spaces posts 20 seconds apart so a slate finishing together does
-not go out as a burst.
+Change `BOT_ARGS`, redeploy, check the result, move on.
 
-### Testing the deploy without posting
+**Phase 1 -- one tweet, to prove the deploy works:**
 
-Drop `--live` from the start command. The service runs the full pipeline and
-logs each tweet without sending it.
+```
+--live --once --leagues cfb --limit 1 --date 20260829 20260903 20260904 20260905 20260906 20260907
+```
+
+Posts the single earliest game and exits. `restartPolicyType` is `ON_FAILURE`,
+so a clean exit does not restart.
+
+**Phase 2 -- backfill the rest:**
+
+```
+--live --once --leagues cfb --date 20260829 20260903 20260904 20260905 20260906 20260907
+```
+
+The volume already holds phase 1's game, so it is not repeated. Posts in
+kickoff order at `--pace` seconds apart.
+
+**Phase 3 -- steady state:**
+
+```
+--leagues nfl cfb --interval 120 --live --pace 20
+```
+
+Note there is no `--seed-on-empty` here. The volume is populated by now, so
+the empty-database guard should never fire -- and if it ever does, that means
+the volume was lost and you want the loud refusal rather than a silent
+reseed.
+
+### Constraints worth knowing
+
+A service with a volume cannot run replicas, and Railway blocks two
+deployments mounting the same volume at once -- which is exactly the guarantee
+this bot needs, since two instances would double-post.
+
+Inspect the database with the Railway CLI:
+
+```bash
+railway volume browse /
+```
 
 ## Posting for real
 
