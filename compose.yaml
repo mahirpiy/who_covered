@@ -1,0 +1,32 @@
+# SQLite is an embedded database -- there is no server to run. This compose
+# file runs the bot itself and keeps the database file on a named volume so it
+# survives container rebuilds, which is what makes the "post each game once"
+# guarantee hold across restarts.
+
+services:
+  bot:
+    build: .
+    container_name: chalk_report
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      CHALK_REPORT_DB: /data/chalk_report.db
+      TZ: America/New_York
+    volumes:
+      - db:/data
+    # Print-only. Add --live once Twitter credentials are in .env.
+    command: ["python", "src/bot.py", "--leagues", "nfl", "cfb", "--interval", "120"]
+
+  # One-off shell for inspecting the database:
+  #   docker compose run --rm sqlite
+  sqlite:
+    image: keinos/sqlite3:latest
+    profiles: ["tools"]
+    volumes:
+      - db:/data
+    entrypoint: ["sqlite3", "/data/chalk_report.db"]
+
+volumes:
+  db:

@@ -1,4 +1,8 @@
 .env
 *.pyc
 *.json
+!tests/fixtures/*.json
 .DS_Store
+env/
+data/
+__pycache__/

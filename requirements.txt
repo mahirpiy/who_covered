@@ -1,0 +1,6 @@
+requests==2.32.3
+python-dotenv==1.0.1
+tweepy==4.17.0
+# Guarantees the IANA timezone database is present regardless of what the base
+# image ships, so ZoneInfo('America/New_York') cannot fail at runtime.
+tzdata==2024.2
