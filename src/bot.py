@@ -151,11 +151,22 @@ def format_spread(spread):
     return trimmed if spread < 0 else f'+{trimmed}'
 
 
-def build_tweet(game, running_units):
+def format_record(totals):
+    """Renders an against-the-spread record: 60-37-2, or 60-37 with no pushes."""
+
+    losses = totals['games'] - totals['covers'] - totals['pushes']
+
+    if totals['pushes']:
+        return f'{totals["covers"]}-{losses}-{totals["pushes"]}'
+
+    return f'{totals["covers"]}-{losses}'
+
+
+def build_tweet(game, season):
     """Composes the single tweet for one finished game.
 
-    ``running_units`` is this league's season-to-date total including the game
-    being tweeted. NFL and college totals are tracked separately.
+    ``season`` is this league's season-to-date record and units *including*
+    the game being tweeted. NFL and college are tracked separately.
     """
 
     league = game['league']
@@ -173,8 +184,8 @@ def build_tweet(game, running_units):
         f'{underdog["abbreviation"]} {game["underdog_score"]}',
         f'{game["units"]:+.2f}u',
         '',
-        f'📊 {LEAGUE_NAME[league]} favorites {game["season"]}: '
-        f'{running_units:+.2f}u',
+        f'📊 1u on every {LEAGUE_NAME[league]} favorite in {game["season"]}',
+        f'{format_record(season)} ATS, {season["units"]:+.2f}u',
     ]
 
     return '\n'.join(lines)
@@ -235,13 +246,16 @@ def _process_event(connection, league, raw_event, options, first_of_pass):
 
     game = build_game(league, event, odds)
 
-    # The season line includes this game, so add it to the stored total rather
-    # than reading back after the insert -- that keeps the write after the
-    # send, so a failed tweet is retried next pass.
-    prior = store.season_totals(connection, league, game['season'])['units']
-    running_units = prior + game['units']
+    # The season line includes this game, so fold it into the stored totals
+    # rather than reading back after the insert -- that keeps the write after
+    # the send, so a failed tweet is retried next pass.
+    season = store.season_totals(connection, league, game['season'])
+    season['games'] += 1
+    season['covers'] += game['result'] == COVER
+    season['pushes'] += game['result'] == PUSH
+    season['units'] += game['units']
 
-    text = build_tweet(game, running_units)
+    text = build_tweet(game, season)
 
     if options.seed:
         # Backfill only: record the game as handled without tweeting it, so a
@@ -274,8 +288,9 @@ def _process_event(connection, league, raw_event, options, first_of_pass):
     store.record(connection, game, text, options.dry_run)
     options.posted += 1
 
-    LOG.info('posted %s %s (%s, %+.2fu, season %+.2fu)', league,
-             game['short_name'], game['result'], game['units'], running_units)
+    LOG.info('posted %s %s (%s, %+.2fu, season %s ATS %+.2fu)', league,
+             game['short_name'], game['result'], game['units'],
+             format_record(season), season['units'])
 
     return 1
 

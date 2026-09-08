@@ -55,10 +55,23 @@ def test_tweet_shows_league_scoped_season_total():
                      'abbreviation': 'DAL', 'display_name': 'Cowboys'},
     }
 
-    text = bot.build_tweet(game, -4.25)
+    season = {'games': 12, 'covers': 6, 'pushes': 1, 'units': -4.25}
 
-    assert '📊 NFL favorites 2026: -4.25u' in text
+    text = bot.build_tweet(game, season)
+
+    assert '📊 1u on every NFL favorite in 2026' in text
+    assert '6-5-1 ATS, -4.25u' in text
     assert 'CFB' not in text
+
+
+@pytest.mark.parametrize('totals, expected', [
+    ({'games': 99, 'covers': 60, 'pushes': 2}, '60-37-2'),
+    ({'games': 10, 'covers': 6, 'pushes': 0}, '6-4'),
+    ({'games': 1, 'covers': 0, 'pushes': 1}, '0-0-1'),
+    ({'games': 0, 'covers': 0, 'pushes': 0}, '0-0'),
+])
+def test_format_record(totals, expected):
+    assert bot.format_record(totals) == expected
 
 
 @pytest.mark.parametrize('spread, expected', [

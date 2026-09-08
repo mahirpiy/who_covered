@@ -232,14 +232,15 @@ roughly 1,200 tweets, or about **$18**.
 Final: LSU 51, CLEM 10
 +0.89u
 
-📊 CFB favorites 2026: +2.53u
+📊 1u on every CFB favorite in 2026
+2-0 ATS, +2.53u
 ```
 
 Units assume a one-unit bet on the favorite at the closing price: a win pays
 the price, a loss is -1.00, a push is 0.00.
 
-The bottom line is that league's season-to-date total on favorites, including
-the game just posted. **NFL and college are tracked separately** -- a CFB tweet
+The bottom two lines are that league's season-to-date record and units on
+favorites, including the game just posted. **NFL and college are tracked separately** -- a CFB tweet
 never shows NFL units and vice versa.
 
 A season runs August through February, so January bowls and playoff games count
