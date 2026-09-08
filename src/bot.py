@@ -358,7 +358,11 @@ def main(argv=None):
 
     seed_first_pass = False
 
-    if args.live and not args.seed and store.is_empty(connection):
+    # An explicit --date list is a deliberate backfill, so the empty-database
+    # guard does not apply -- it exists to stop a fresh deploy from tweeting
+    # everything already final in the implicit today/yesterday window.
+    if (args.live and not args.seed and not args.date
+            and store.is_empty(connection)):
         if args.seed_on_empty:
             # A blank volume on a fresh deploy would otherwise tweet every
             # game already final in the polling window. Absorb that first pass

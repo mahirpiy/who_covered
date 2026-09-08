@@ -170,10 +170,15 @@ def test_send_failure_leaves_game_unrecorded(connection, stub_espn,
 
 def test_seed_on_empty_absorbs_the_first_pass(tmp_path, monkeypatch,
                                               scoreboard, odds_for):
-    """A blank volume must not dump a whole slate onto the timeline."""
+    """A blank volume must not dump the polling window onto the timeline.
+
+    Deliberately uses the implicit today/yesterday window rather than --date,
+    since an explicit backfill is exempt from the guard.
+    """
 
     sent = []
     monkeypatch.setattr(bot, 'preflight', lambda: None)
+    monkeypatch.setattr(bot, 'eastern_dates', lambda: ['20260905'])
     monkeypatch.setattr(bot, 'send_tweet',
                         lambda text, dry_run: sent.append(text))
     monkeypatch.setattr(bot.espn, 'scoreboard',
@@ -182,7 +187,7 @@ def test_seed_on_empty_absorbs_the_first_pass(tmp_path, monkeypatch,
                         espn._parse_odds_item(odds_for(eid)['items'][0]))
 
     code = bot.main(['--live', '--seed-on-empty', '--once', '--leagues', 'cfb',
-                     '--date', '20260905', '--db', str(tmp_path / 'v.db')])
+                     '--db', str(tmp_path / 'v.db')])
 
     assert code == 0
     assert sent == []
@@ -264,3 +269,39 @@ def test_games_post_in_kickoff_order(connection, stub_espn):
         'SELECT start_time FROM posted ORDER BY posted_at, rowid')]
 
     assert times == sorted(times)
+
+
+def test_explicit_dates_are_not_blocked_by_the_empty_database_guard(
+        tmp_path, monkeypatch, scoreboard, odds_for):
+    """A --date backfill is deliberate, so the empty-DB refusal must not fire."""
+
+    sent = []
+    monkeypatch.setattr(bot, 'preflight', lambda: None)
+    monkeypatch.setattr(bot, 'send_tweet',
+                        lambda text, dry_run: sent.append(text))
+    monkeypatch.setattr(bot.espn, 'scoreboard',
+                        lambda league, date: scoreboard['events'])
+    monkeypatch.setattr(bot.espn, 'game_odds', lambda league, eid, cid=None:
+                        espn._parse_odds_item(odds_for(eid)['items'][0]))
+
+    code = bot.main(['--live', '--once', '--leagues', 'cfb', '--limit', '1',
+                     '--date', '20260905', '--pace', '0',
+                     '--db', str(tmp_path / 'backfill.db')])
+
+    assert code == 0
+    assert len(sent) == 1
+
+
+def test_live_without_dates_still_refuses_on_empty_database(tmp_path,
+                                                            monkeypatch):
+    """The guard must still protect the implicit polling window."""
+
+    monkeypatch.setattr(bot, 'preflight', lambda: None)
+    sent = []
+    monkeypatch.setattr(bot, 'send_tweet',
+                        lambda text, dry_run: sent.append(text))
+
+    code = bot.main(['--live', '--once', '--db', str(tmp_path / 'w.db')])
+
+    assert code == 1
+    assert sent == []

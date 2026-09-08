@@ -45,6 +45,9 @@ def main():
     parser.add_argument('--post', action='store_true',
                         help='publish and delete a throwaway tweet to prove '
                              'write scope')
+    parser.add_argument('--latest', type=int, metavar='N', default=None,
+                        help='show the N most recent tweets on the account, '
+                             'to confirm a deploy actually posted')
     args = parser.parse_args()
 
     import tweepy
@@ -58,6 +61,20 @@ def main():
 
     if me.username.lower() != 'chalkreport':
         print(f'\nWARNING: tokens post as @{me.username}, not @ChalkReport.')
+
+    if args.latest:
+        recent = api.get_users_tweets(
+            me.id, max_results=max(5, args.latest), user_auth=True,
+            tweet_fields=['created_at'])
+
+        posts = recent.data or []
+        if not posts:
+            print('\nNo tweets on the account yet.')
+        for post in posts[:args.latest]:
+            print(f'\n[{post.created_at:%Y-%m-%d %H:%M UTC}] '
+                  f'https://x.com/{me.username}/status/{post.id}')
+            print(post.text)
+        return
 
     if not args.post:
         print('\nRead check passed. This does NOT prove write scope -- '
